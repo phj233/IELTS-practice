@@ -132,3 +132,13 @@ test('CloudSync propagates a local record deletion only after local deletion suc
     assert.equal((await api.list()).some((record) => record.id === 'local-record'), false);
     assert.ok(calls.some((call) => call.url === '/api/practice-records/local-record' && call.options.method === 'DELETE'));
 });
+
+test('CloudSync panel has an independent close path after authentication', () => {
+    const source = fs.readFileSync(path.join(repoRoot, 'js/core/cloudSync.js'), 'utf8');
+
+    assert.match(source, /data-cloud-action="close"/);
+    assert.match(source, /function closeDialog\(dialog\)/);
+    assert.match(source, /event\.key === 'Escape'/);
+    assert.match(source, /await login\(username, password\);\s*closeDialog\(dialog\);/);
+    assert.match(source, /await register\(username, password\);\s*closeDialog\(dialog\);/);
+});

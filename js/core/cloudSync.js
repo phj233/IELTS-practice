@@ -295,6 +295,12 @@
         return api;
     }
 
+    function closeDialog(dialog) {
+        if (dialog) {
+            dialog.hidden = true;
+        }
+    }
+
     function mountUi() {
         if (uiMounted || !global.document || !global.document.body) return;
         const header = global.document.querySelector('.hero-header') || global.document.body;
@@ -304,7 +310,10 @@
             .cloud-sync-button { border: 1px solid rgba(99,102,241,.45); background: rgba(255,255,255,.78); color: #3730a3; border-radius: 999px; padding: 7px 12px; cursor: pointer; font: inherit; }
             .cloud-sync-dialog { position: fixed; z-index: 10050; right: 20px; top: 76px; width: min(360px, calc(100vw - 32px)); padding: 18px; border-radius: 16px; background: #fff; color: #1f2937; box-shadow: 0 18px 48px rgba(15,23,42,.24); border: 1px solid rgba(99,102,241,.2); }
             .cloud-sync-dialog[hidden] { display: none; }
+            .cloud-sync-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
             .cloud-sync-dialog h3 { margin: 0 0 8px; font-size: 1.05rem; }
+            .cloud-sync-dialog-header h3 { margin: 0; }
+            .cloud-sync-close { border: 0; border-radius: 50%; width: 30px; height: 30px; padding: 0; cursor: pointer; background: #e2e8f0; color: #334155; font-size: 1.25rem; line-height: 1; }
             .cloud-sync-dialog p { margin: 0 0 12px; font-size: .88rem; line-height: 1.45; color: #4b5563; }
             .cloud-sync-dialog input { box-sizing: border-box; width: 100%; margin: 5px 0; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
             .cloud-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -327,7 +336,10 @@
         dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-label', '账户与多设备同步');
         dialog.innerHTML = `
-            <h3>☁️ 多设备同步</h3>
+            <div class="cloud-sync-dialog-header">
+                <h3>☁️ 多设备同步</h3>
+                <button type="button" class="cloud-sync-close" data-cloud-action="close" aria-label="关闭同步面板">×</button>
+            </div>
             <p id="cloud-sync-status" class="cloud-sync-status"></p>
             <form id="cloud-sync-form">
                 <input id="cloud-sync-username" name="username" autocomplete="username" placeholder="用户名" maxlength="80" required>
@@ -346,12 +358,19 @@
             dialog.hidden = !dialog.hidden;
             renderUi();
         });
+        dialog.querySelector('[data-cloud-action="close"]').addEventListener('click', () => closeDialog(dialog));
+        global.document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeDialog(dialog);
+            }
+        });
         dialog.querySelector('form').addEventListener('submit', async (event) => {
             event.preventDefault();
             const username = dialog.querySelector('#cloud-sync-username').value.trim();
             const password = dialog.querySelector('#cloud-sync-password').value;
             try {
                 await login(username, password);
+                closeDialog(dialog);
             } catch (error) {
                 handleApiError(error);
             }
@@ -361,6 +380,7 @@
             const password = dialog.querySelector('#cloud-sync-password').value;
             try {
                 await register(username, password);
+                closeDialog(dialog);
             } catch (error) {
                 handleApiError(error);
             }
