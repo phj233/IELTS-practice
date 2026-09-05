@@ -74,6 +74,14 @@ http://localhost:8000/
 
 公开部署前请重新阅读顶部使用声明。部署可行不等于适合公开传播，尤其不要将包含题源的网页用于商业化、宣传或大规模分发。
 
+### 可选多设备同步部署
+
+本分支在保留主分支 AppData v2 本地数据模型的同时，提供可选 Node.js 和 PostgreSQL 同步后端，适用于个人 NAS、可信局域网或小型自托管服务器。浏览器本地记录仍可离线使用；登录后会与同一账号的服务器记录合并。
+
+部署文件位于 backend 目录。Portainer 应以仓库根目录作为构建上下文，以 backend/docker-compose.yml 作为 Stack 文件，并将数据库密码与 session secret 配置为 Stack 环境变量。默认应用仅监听服务器本机；需要局域网访问时设置 APP_BIND_ADDRESS 为 0.0.0.0。通过 HTTPS 反向代理访问时设置 COOKIE_SECURE 和 TRUST_PROXY 为 true。
+
+页面顶部的“登录并同步”入口支持注册、登录和手动同步。REGISTRATION_MODE 为 first-user 时仅允许创建第一个账号；创建完成后建议改为 disabled。新增、编辑注释和删除练习记录均会在本地写入成功后同步，网络不可用时保留本地数据作为回退。
+
 ## 功能说明
 
 ### 学习总览
