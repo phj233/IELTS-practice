@@ -29,6 +29,7 @@ const bundles = {
         'js/data/index.js',
         'js/core/practiceCore.js',
         'js/core/practiceRecordAPI.js',
+        'js/core/cloudSync.js',
         'js/core/backupAPI.js',
         'js/core/externalBackupService.js',
         'js/core/practiceStore.js',
