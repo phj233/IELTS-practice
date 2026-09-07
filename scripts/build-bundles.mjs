@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,6 +13,7 @@ const bundles = {
         'js/presentation/threeBackground.js',
         'js/runtime/bootScreen.js',
         'js/runtime/lazyLoader.js',
+        'js/runtime/questionBankUpdateWatcher.js',
         'js/utils/suitePreference.js',
         'js/presentation/app-actions.js'
     ],
@@ -24,6 +26,7 @@ const bundles = {
         'js/core/vocabScheduler.js',
         'js/core/practiceReviewScheduler.js',
         'js/data/v2/appData.js',
+        'js/core/cloudSync.js',
         'js/core/externalBackupService.js',
         'js/core/siteDataReset.js',
         'js/core/practiceCore.js',
@@ -506,6 +509,38 @@ function renderBundle(outputPath, inputs) {
     ].join('\n');
 }
 
+const questionBankVersionPath = 'assets/generated/question-bank-version.json';
+const questionBankAssetRoots = [
+    'assets/generated/reading-exams',
+    'assets/generated/reading-explanations',
+    'assets/generated/listening-exams'
+];
+
+function listFilesRecursively(absoluteDirectory) {
+    if (!fs.existsSync(absoluteDirectory)) return [];
+    return fs.readdirSync(absoluteDirectory, { withFileTypes: true })
+        .flatMap((entry) => {
+            const absolutePath = path.join(absoluteDirectory, entry.name);
+            return entry.isDirectory() ? listFilesRecursively(absolutePath) : [absolutePath];
+        });
+}
+
+function renderQuestionBankVersion() {
+    const files = questionBankAssetRoots
+        .flatMap((relativeRoot) => listFilesRecursively(path.join(root, relativeRoot)))
+        .map((absolutePath) => path.relative(root, absolutePath).replace(/\\/g, '/'))
+        .filter((relativePath) => relativePath !== questionBankVersionPath)
+        .sort();
+    const hash = crypto.createHash('sha256');
+    files.forEach((relativePath) => {
+        hash.update(relativePath);
+        hash.update('\0');
+        hash.update(fs.readFileSync(path.join(root, relativePath)));
+        hash.update('\0');
+    });
+    return `${JSON.stringify({ version: hash.digest('hex'), files: files.length }, null, 2)}\n`;
+}
+
 assertNoNewSymbolConflicts(bundles);
 
 const staleOutputs = [];
@@ -522,6 +557,16 @@ for (const [outputPath, inputs] of Object.entries(bundles)) {
     console.log(`${outputPath}: ${inputs.length} files`);
 }
 
+const questionBankVersion = renderQuestionBankVersion();
+const questionBankVersionAbsolutePath = path.join(root, questionBankVersionPath);
+const staleQuestionBankVersion = !fs.existsSync(questionBankVersionAbsolutePath)
+    || fs.readFileSync(questionBankVersionAbsolutePath, 'utf8') !== questionBankVersion;
+if (!checkOnly && staleQuestionBankVersion) {
+    fs.mkdirSync(path.dirname(questionBankVersionAbsolutePath), { recursive: true });
+    fs.writeFileSync(questionBankVersionAbsolutePath, questionBankVersion, 'utf8');
+    console.log(`${questionBankVersionPath}: generated`);
+}
+
 const expectedOutputs = new Set(Object.keys(bundles).map((outputPath) => outputPath.replace(/\\/g, '/')));
 const bundleDirectory = path.join(root, 'js', 'bundles');
 const orphanOutputs = fs.existsSync(bundleDirectory)
@@ -533,9 +578,10 @@ const orphanOutputs = fs.existsSync(bundleDirectory)
     : [];
 
 if (checkOnly) {
-    if (staleOutputs.length || orphanOutputs.length) {
+    if (staleOutputs.length || orphanOutputs.length || staleQuestionBankVersion) {
         if (staleOutputs.length) console.error(`Stale or missing bundles:\n${staleOutputs.map((item) => `  - ${item}`).join('\n')}`);
         if (orphanOutputs.length) console.error(`Orphan bundles:\n${orphanOutputs.map((item) => `  - ${item}`).join('\n')}`);
+        if (staleQuestionBankVersion) console.error(`Stale or missing question-bank version: ${questionBankVersionPath}`);
         process.exitCode = 1;
     } else {
         console.log(`Bundle check passed: ${expectedOutputs.size} outputs are current.`);

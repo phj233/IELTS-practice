@@ -793,6 +793,17 @@
         if (mode === 'detail' || mode === 'medium') return joinPracticeRecord(summary, detail, null, mode);
         return joinPracticeRecord(summary, detail, find('practiceAnnotations'), mode);
     }
+
+    function notifyCloudSync(mutation) {
+        const cloudSync = global.CloudSync;
+        if (!cloudSync || typeof cloudSync.notifyPracticeMutation !== 'function') return;
+        Promise.resolve(cloudSync.notifyPracticeMutation(mutation)).catch((error) => {
+            if (global.console && console.warn) {
+                console.warn('[AppData v2] practice sync notification failed:', error);
+            }
+        });
+    }
+
     const practice = Object.freeze({
         async list(options = {}) {
             await ready;
@@ -816,7 +827,9 @@
             const layers = splitPracticeRecord(recordInput); const recordId = layers.summary.id;
             const receipt = await retryMergeConflict(command || {}, async () => kernel.mutateEntities(
                 practiceUpserts(recordId, layers, await practiceLayersForUpsert(recordId)), mutation));
-            return Object.assign({}, receipt, { record: await joinedPractice(recordId, 'full') });
+            const record = await joinedPractice(recordId, 'full');
+            notifyCloudSync({ type: 'upsert', recordId });
+            return Object.assign({}, receipt, { record });
         },
         async finalizeSuite(command) {
             await ready; assertObject(command, 'finalizeSuite command is required');
@@ -834,11 +847,13 @@
                 const deletes = Array.from(children).flatMap((id) => ['practiceSummaries', 'practiceDetails', 'practiceAnnotations'].map((store) => ({ type: 'delete', store, recordId: id })));
                 return kernel.mutateEntities(deletes.concat(practiceUpserts(recordId, layers, existing)), mutation);
             });
-            return Object.assign({}, receipt, { record: await joinedPractice(recordId, 'full') });
+            const record = await joinedPractice(recordId, 'full');
+            notifyCloudSync({ type: 'upsert', recordId });
+            return Object.assign({}, receipt, { record });
         },
         async updateAnnotations(command) {
             await ready; assertObject(command, 'updateAnnotations command is required'); const recordId = String(command.recordId || '');
-            return retryMergeConflict(command, async () => {
+            const receipt = await retryMergeConflict(command, async () => {
                 const current = await practiceLayers(recordId, true); if (!current.summary) throw new AppDataError('VALIDATION', `Unknown practice record: ${recordId}`);
                 if (command.expectedRevision !== undefined && Number(command.expectedRevision) !== entityRevision(current.annotations)) throw new AppDataError('CONFLICT', `Revision conflict for practice annotations ${recordId}`);
                 const annotations = Object.assign({ recordId }, clone(asObject(current.annotations && current.annotations.data)));
@@ -859,20 +874,30 @@
                     expectedRevision: entityRevision(current.annotations)
                 }], mutationOptions(command, 'practice-annotations', command));
             });
+            notifyCloudSync({ type: 'upsert', recordId });
+            return receipt;
         },
         async delete(command) {
             await ready; const recordId = String(command && (command.recordId || command.id) || command || ''); if (!recordId) throw new AppDataError('VALIDATION', 'practice record id is required');
             const found = await kernel.readEntity('practiceSummaries', recordId); if (!found) return Object.assign(await kernel.journalNoop(mutationOptions(command, 'practice-delete', { recordId })), { deletedCount: 0, noop: true });
             const receipt = await kernel.mutateEntities(['practiceSummaries', 'practiceDetails', 'practiceAnnotations'].map((store) => ({ type: 'delete', store, recordId })), mutationOptions(command, 'practice-delete', { recordId }));
+            notifyCloudSync({ type: 'delete', recordIds: [recordId] });
             return Object.assign({}, receipt, { deletedCount: 1 });
         },
         async deleteMany(command) {
             await ready; assertObject(command, 'practice.deleteMany command is required'); const recordIds = Array.from(new Set(asArray(command.recordIds).map(String).filter(Boolean)));
             if (!recordIds.length) throw new AppDataError('VALIDATION', 'practice.deleteMany requires recordIds'); const summaries = await kernel.listEntities('practiceSummaries'); const ids = recordIds.filter((id) => summaries.some((item) => practiceRecordMatches(item, [id])));
             if (!ids.length) return Object.assign(await kernel.journalNoop(mutationOptions(command, 'practice-delete-many', { recordIds })), { deletedCount: 0, noop: true });
-            const receipt = await kernel.mutateEntities(ids.flatMap((recordId) => ['practiceSummaries', 'practiceDetails', 'practiceAnnotations'].map((store) => ({ type: 'delete', store, recordId }))), mutationOptions(command, 'practice-delete-many', { recordIds })); return Object.assign({}, receipt, { deletedCount: ids.length });
+            const receipt = await kernel.mutateEntities(ids.flatMap((recordId) => ['practiceSummaries', 'practiceDetails', 'practiceAnnotations'].map((store) => ({ type: 'delete', store, recordId }))), mutationOptions(command, 'practice-delete-many', { recordIds }));
+            notifyCloudSync({ type: 'delete', recordIds: ids });
+            return Object.assign({}, receipt, { deletedCount: ids.length });
         },
-        async clear(command = {}) { await ready; return kernel.mutateEntities(['practiceSummaries', 'practiceDetails', 'practiceAnnotations'].map((store) => ({ type: 'clear', store })), mutationOptions(command, 'practice-clear', { all: true })); },
+        async clear(command = {}) {
+            await ready;
+            const receipt = await kernel.mutateEntities(['practiceSummaries', 'practiceDetails', 'practiceAnnotations'].map((store) => ({ type: 'clear', store })), mutationOptions(command, 'practice-clear', { all: true }));
+            notifyCloudSync({ type: 'clear' });
+            return receipt;
+        },
         async listInsights(options = {}) {
             await ready;
             const limit = Math.max(1, Math.min(50, Number(options.limit) || 10));
