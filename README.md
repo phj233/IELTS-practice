@@ -216,7 +216,7 @@ Portainer 用户可用相同的 `backend/docker-compose.yml` 建立 Stack，并�
 
 题库更新不向 `assets/generated/` 写入额外的版本文件，也不改变既有题库资源格式。同步部署会将该目录以只读方式挂载到应用容器中；应用通过 `/api/question-bank-revision` 动态计算当前生成资产的修订值，因此可在不重建应用镜像、不重启 PostgreSQL、也不改动同步接口的情况下更新默认题库。
 
-仓库内提供 `backend/scripts/update-question-bank.sh`：它从指定 Git 远端比较以下题库目录与当前工作区的差异；仅当这些目录发生变化时，才恢复对应生成资产：
+仓库内提供 `backend/scripts/update-question-bank.sh`：应用代码可以来自自己的 fork，但题库更新器建议单独添加上游仓库并检查其 `main`。它仅比较以下题库目录与当前工作区的差异；只有这些目录发生变化时，才恢复对应生成资产：
 
 ```text
 assets/generated/reading-exams/
@@ -229,7 +229,8 @@ assets/generated/listening-exams/
 ```bash
 cd /opt/ielts-practice
 chmod +x backend/scripts/update-question-bank.sh
-QUESTION_BANK_REMOTE=origin \
+git remote add upstream https://github.com/sallowayma-git/IELTS-practice.git
+QUESTION_BANK_REMOTE=upstream \
 QUESTION_BANK_BRANCH=main \
 backend/scripts/update-question-bank.sh --once
 ```
@@ -245,7 +246,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/ielts-practice
-Environment=QUESTION_BANK_REMOTE=origin
+Environment=QUESTION_BANK_REMOTE=upstream
 Environment=QUESTION_BANK_BRANCH=main
 Environment=QUESTION_BANK_CHECK_INTERVAL_SECONDS=900
 ExecStart=/opt/ielts-practice/backend/scripts/update-question-bank.sh
