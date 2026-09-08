@@ -104,6 +104,16 @@ function createApp(options = {}) {
             return next(error);
         }
     });
+    // Compatibility for pages that loaded the pre-revision watcher before an
+    // application deployment. No file is created under assets/generated.
+    app.get('/assets/generated/question-bank-version.json', noStore, (_req, res, next) => {
+        try {
+            const revision = questionBankRevisionProvider.getRevision();
+            return res.json({ version: revision.revision, files: revision.files });
+        } catch (error) {
+            return next(error);
+        }
+    });
 
     app.use('/api/auth', noStore, createAuthRouter({
         store: authStore,
