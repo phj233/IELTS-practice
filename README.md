@@ -214,15 +214,14 @@ Portainer 用户可用相同的 `backend/docker-compose.yml` 建立 Stack，并�
 
 ### 题库发布与自动刷新
 
-构建脚本会为 `assets/generated/` 中的阅读和听力题库资产生成 `assets/generated/question-bank-version.json`。同步部署会将该目录以只读方式挂载到应用容器中，因此可在不重建应用镜像、不重启 PostgreSQL、也不改动同步接口的情况下更新默认题库。
+题库更新不向 `assets/generated/` 写入额外的版本文件，也不改变既有题库资源格式。同步部署会将该目录以只读方式挂载到应用容器中；应用通过 `/api/question-bank-revision` 动态计算当前生成资产的修订值，因此可在不重建应用镜像、不重启 PostgreSQL、也不改动同步接口的情况下更新默认题库。
 
-仓库内提供 `backend/scripts/update-question-bank.sh`：它从指定 Git 远端检查 `question-bank-version.json`，版本变化时只恢复以下生成资产，且最后才写入版本文件：
+仓库内提供 `backend/scripts/update-question-bank.sh`：它从指定 Git 远端比较以下题库目录与当前工作区的差异；仅当这些目录发生变化时，才恢复对应生成资产：
 
 ```text
 assets/generated/reading-exams/
 assets/generated/reading-explanations/
 assets/generated/listening-exams/
-assets/generated/question-bank-version.json
 ```
 
 它**不会**执行 `git pull`、替换应用代码、重建容器或触碰 PostgreSQL 数据。先在服务器上手动验证一次：
@@ -267,7 +266,9 @@ systemctl status ielts-question-bank-updater
 
 更新器只适用于保留 `.git` 元数据的专用部署检出目录；如果服务器通过压缩包发布、没有 Git 远端或使用自定义题库，应关闭该服务并按常规部署流程发布资源。它不会覆盖浏览器设置中用户手动导入的题库配置。
 
-已打开的 HTTP/HTTPS 页面会在可见时及每两分钟检查版本文件。检测到新版本后，空闲页面会自动刷新并载入新题库；正在答题或存在活动套题窗口时会延后刷新，避免中断当前练习。生成资产响应不缓存，因此刷新后不会继续使用旧的题目文件。
+已打开的同步部署页面会在可见时及每两分钟检查 `/api/question-bank-revision`。检测到修订值变化后，空闲页面会自动刷新并载入新题库；正在答题或存在活动套题窗口时会延后刷新，避免中断当前练习。生成资产响应不缓存，因此刷新后不会继续使用旧的题目文件。
+
+纯静态托管和 `file://` 单机模式不请求该接口，也不会自动轮询；它们仍可正常使用题库，只需在发布新资源后由用户手动刷新页面。这使自动更新逻辑保持在需要后端的部署模式内，不给题库目录增加额外的控制文件。
 
 ## 功能说明
 

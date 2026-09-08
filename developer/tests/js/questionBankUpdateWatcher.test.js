@@ -16,12 +16,12 @@ function createHarness() {
     let reloads = 0;
     const activeSessions = new Map([['exam-1', {}]]);
     const window = {
-        location: { reload() { reloads += 1; } },
+        location: { protocol: 'https:', reload() { reloads += 1; } },
         app: { components: { practiceRecorder: { activeSessions } } },
         console: { info() {}, warn() {} },
         setInterval() { return 1; },
         async fetch() {
-            return { ok: true, async json() { return { version: versions[Math.min(cursor++, versions.length - 1)] }; } };
+            return { ok: true, async json() { return { revision: versions[Math.min(cursor++, versions.length - 1)] }; } };
         }
     };
     window.window = window;
@@ -48,16 +48,35 @@ test('question-bank changes defer restart until no practice session is active', 
     assert.equal(reloads(), 1);
 });
 
-test('bundle build generates a version from generated question-bank assets', () => {
-    const buildSource = fs.readFileSync(path.join(root, 'scripts/build-bundles.mjs'), 'utf8');
-    assert.match(buildSource, /question-bank-version\.json/);
-    assert.match(buildSource, /createHash\('sha256'\)/);
+test('file protocol does not poll the deployment-only revision endpoint', async () => {
+    const { watcher } = createHarness();
+    const result = await watcher.checkNow();
+    assert.equal(result.checked, true);
+
+    const fileWindow = {
+        location: { protocol: 'file:', reload() {} },
+        console: { info() {}, warn() {} },
+        setInterval() { throw new Error('file protocol must not register polling'); },
+        fetch() { throw new Error('file protocol must not request a revision'); }
+    };
+    fileWindow.window = fileWindow;
+    const context = vm.createContext({ window: fileWindow, globalThis: fileWindow, Date, Promise, Error, String, Number, console: fileWindow.console });
+    vm.runInContext(source, context, { filename: 'questionBankUpdateWatcher.js' });
+    assert.equal(fileWindow.QuestionBankUpdateWatcher.supportsRevisionChecks(), false);
+    const skipped = await fileWindow.QuestionBankUpdateWatcher.checkNow();
+    assert.equal(skipped.reason, 'unsupported-protocol');
 });
 
-test('question-bank updater limits Git restores to generated assets and publishes the version last', () => {
+test('watcher uses the documented revision endpoint instead of generated version metadata', () => {
+    assert.match(source, /\/api\/question-bank-revision/);
+    assert.doesNotMatch(source, /question-bank-version\.json/);
+});
+
+test('question-bank updater limits Git restores to generated assets without a generated version file', () => {
     const updaterSource = fs.readFileSync(path.join(root, 'backend/scripts/update-question-bank.sh'), 'utf8');
     assert.match(updaterSource, /git fetch --quiet/);
+    assert.match(updaterSource, /git diff --quiet FETCH_HEAD -- \$asset_paths/);
     assert.match(updaterSource, /git restore --worktree --source=FETCH_HEAD -- \$asset_paths/);
-    assert.match(updaterSource, /git restore --worktree --source=FETCH_HEAD -- "\$version_file"/);
+    assert.doesNotMatch(updaterSource, /question-bank-version\.json/);
     assert.match(updaterSource, /never pulls\n# application code/);
 });

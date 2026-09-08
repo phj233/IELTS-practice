@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const db = require('./db');
 const { PostgresAuthStore, createAuthRouter } = require('./auth');
 const { PostgresPracticeRecordStore, createPracticeRecordsRouter } = require('./practiceRecords');
+const { createQuestionBankRevisionProvider } = require('./questionBankRevision');
 
 const DEFAULT_SESSION_SECRET = 'development-session-secret-change-me';
 const PLACEHOLDER_SESSION_SECRET = 'replace-with-a-long-random-session-secret';
@@ -90,9 +91,18 @@ function createApp(options = {}) {
 
     const authStore = options.authStore || new PostgresAuthStore(dbClient);
     const practiceStore = options.practiceStore || new PostgresPracticeRecordStore(dbClient);
+    const questionBankRevisionProvider = options.questionBankRevisionProvider
+        || createQuestionBankRevisionProvider({ repoRoot });
 
     app.get('/api/health', (_req, res) => {
         res.json({ ok: true });
+    });
+    app.get('/api/question-bank-revision', noStore, (_req, res, next) => {
+        try {
+            return res.json(questionBankRevisionProvider.getRevision());
+        } catch (error) {
+            return next(error);
+        }
     });
 
     app.use('/api/auth', noStore, createAuthRouter({

@@ -78,13 +78,14 @@ test('health endpoint is public', async () => {
     }
 });
 
-test('generated question-bank assets are not cached by the sync deployment', async () => {
+test('question-bank revision endpoint is public and not cached', async () => {
     const client = await createClient();
     try {
-        const result = await client.request('GET', '/assets/generated/question-bank-version.json');
+        const result = await client.request('GET', '/api/question-bank-revision');
         assert.equal(result.response.status, 200);
         assert.equal(result.response.headers.get('cache-control'), 'no-store');
-        assert.equal(typeof result.json.version, 'string');
+        assert.equal(typeof result.json.revision, 'string');
+        assert.equal(result.json.files > 0, true);
     } finally {
         await client.close();
     }

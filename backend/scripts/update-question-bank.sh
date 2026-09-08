@@ -10,7 +10,6 @@ repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 remote=${QUESTION_BANK_REMOTE:-origin}
 branch=${QUESTION_BANK_BRANCH:-main}
 interval=${QUESTION_BANK_CHECK_INTERVAL_SECONDS:-900}
-version_file=assets/generated/question-bank-version.json
 asset_paths='assets/generated/reading-exams assets/generated/reading-explanations assets/generated/listening-exams'
 
 case "${1:-}" in
@@ -44,34 +43,17 @@ if [ ! -d "$repo_root/.git" ]; then
     exit 69
 fi
 
-read_version() {
-    sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -n 1
-}
-
 update_once() {
     cd "$repo_root"
     git fetch --quiet "$remote" "$branch"
 
-    remote_version=$(git show "FETCH_HEAD:$version_file" 2>/dev/null | sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
-    local_version=''
-    if [ -f "$version_file" ]; then
-        local_version=$(read_version "$version_file")
-    fi
-
-    if [ -z "$remote_version" ]; then
-        echo "Remote $remote/$branch does not contain a valid $version_file" >&2
-        return 1
-    fi
-    if [ "$remote_version" = "$local_version" ]; then
-        echo "Question bank is already current ($remote_version)."
+    if git diff --quiet FETCH_HEAD -- $asset_paths; then
+        echo "Question bank is already current ($(git rev-parse --short FETCH_HEAD))."
         return 0
     fi
 
-    # Restore assets first. Publish the version file last so browsers only see
-    # the new version after the replacement assets are already present.
     git restore --worktree --source=FETCH_HEAD -- $asset_paths
-    git restore --worktree --source=FETCH_HEAD -- "$version_file"
-    echo "Question bank updated to $remote_version from $remote/$branch."
+    echo "Question bank updated from $remote/$branch ($(git rev-parse --short FETCH_HEAD))."
 }
 
 if [ "$run_once" = true ]; then

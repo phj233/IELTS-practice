@@ -1107,7 +1107,7 @@
 (function initQuestionBankUpdateWatcher(global) {
     'use strict';
 
-    const VERSION_URL = 'assets/generated/question-bank-version.json';
+    const REVISION_URL = '/api/question-bank-revision';
     const CHECK_INTERVAL_MS = 120000;
     let knownVersion = null;
     let reloadPending = false;
@@ -1151,10 +1151,14 @@
         }
     }
 
-    async function readVersion() {
+    function supportsRevisionChecks() {
+        const protocol = global.location && String(global.location.protocol || '').toLowerCase();
+        return protocol === 'http:' || protocol === 'https:';
+    }
+
+    async function readRevision() {
         if (typeof global.fetch !== 'function') return null;
-        const separator = VERSION_URL.includes('?') ? '&' : '?';
-        const response = await global.fetch(`${VERSION_URL}${separator}t=${Date.now()}`, {
+        const response = await global.fetch(`${REVISION_URL}?t=${Date.now()}`, {
             cache: 'no-store',
             credentials: 'same-origin'
         });
@@ -1162,26 +1166,27 @@
             throw new Error(`question-bank version request failed (${response.status})`);
         }
         const payload = await response.json();
-        return payload && typeof payload.version === 'string' ? payload.version : null;
+        return payload && typeof payload.revision === 'string' ? payload.revision : null;
     }
 
     async function checkNow() {
-        let nextVersion;
+        if (!supportsRevisionChecks()) return { checked: false, reason: 'unsupported-protocol' };
+        let nextRevision;
         try {
-            nextVersion = await readVersion();
+            nextRevision = await readRevision();
         } catch (error) {
             if (global.console && typeof global.console.warn === 'function') {
                 global.console.warn('[QuestionBankUpdateWatcher] version check failed:', error);
             }
             return { checked: false, reason: 'request-failed' };
         }
-        if (!nextVersion) return { checked: false, reason: 'missing-version' };
+        if (!nextRevision) return { checked: false, reason: 'missing-revision' };
         if (!knownVersion) {
-            knownVersion = nextVersion;
+            knownVersion = nextRevision;
             return { checked: true, changed: false };
         }
-        if (nextVersion !== knownVersion) {
-            knownVersion = nextVersion;
+        if (nextRevision !== knownVersion) {
+            knownVersion = nextRevision;
             reloadPending = true;
         }
         if (!reloadPending) return { checked: true, changed: false };
@@ -1199,6 +1204,7 @@
     }
 
     function start() {
+        if (!supportsRevisionChecks()) return;
         checkNow();
         global.setInterval(checkNow, CHECK_INTERVAL_MS);
         if (global.document && typeof global.document.addEventListener === 'function') {
@@ -1211,6 +1217,7 @@
     global.QuestionBankUpdateWatcher = {
         checkNow,
         hasActivePractice,
+        supportsRevisionChecks,
         start
     };
 
