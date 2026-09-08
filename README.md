@@ -235,31 +235,11 @@ QUESTION_BANK_BRANCH=main \
 backend/scripts/update-question-bank.sh --once
 ```
 
-验证无误后，可用 systemd 持续检查。创建 `/etc/systemd/system/ielts-question-bank-updater.service`，其中 `/opt/ielts-practice` 应替换为实际仓库目录：
-
-```ini
-[Unit]
-Description=IELTS Practice generated question-bank updater
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/ielts-practice
-Environment=QUESTION_BANK_REMOTE=upstream
-Environment=QUESTION_BANK_BRANCH=main
-Environment=QUESTION_BANK_CHECK_INTERVAL_SECONDS=900
-ExecStart=/opt/ielts-practice/backend/scripts/update-question-bank.sh
-Restart=always
-RestartSec=30
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启用后执行：
+验证无误后，可使用仓库提供的 systemd 模板持续检查。模板默认部署目录为 `/opt/ielts-practice`，如使用其他目录请先调整 [backend/deploy/ielts-question-bank-updater.service](backend/deploy/ielts-question-bank-updater.service)。安装并启用：
 
 ```bash
+sudo install -m 644 backend/deploy/ielts-question-bank-updater.service \
+  /etc/systemd/system/ielts-question-bank-updater.service
 systemctl daemon-reload
 systemctl enable --now ielts-question-bank-updater
 systemctl status ielts-question-bank-updater
